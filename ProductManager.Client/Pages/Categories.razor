@@ -1,0 +1,244 @@
+@page "/categories"
+@inject HttpClient Http
+
+<h3>Categories</h3>
+
+<div style="margin-bottom: 20px;">
+    <input @bind="categoryName"
+           placeholder="Category name" />
+
+    <button @onclick="SaveCategory">
+        @(editingCategoryId == null ? "Add category" : "Save changes")
+    </button>
+
+    @if (editingCategoryId != null)
+    {
+        <button @onclick="CancelEdit">
+            Cancel
+        </button>
+    }
+</div>
+
+<hr />
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">
+        @errorMessage
+    </div>
+}
+
+@if (categories == null)
+{
+    <p>Loading...</p>
+}
+else if (categories.Count == 0)
+{
+    <p>No categories found.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            @foreach (var category in categories)
+            {
+                <tr>
+                    <td>@category.Name</td>
+
+                    <td>
+                        <button @onclick="() => EditCategory(category)">
+                            Edit
+                        </button>
+
+                        <button @onclick="() => DeleteCategory(category.Id)">
+                            Delete
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<CategoryDto>? categories;
+
+    private string categoryName = "";
+
+    private int? editingCategoryId;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+    }
+
+    private async Task LoadCategories()
+    {
+        try
+        {
+            errorMessage = null;
+
+            categories =
+                await Http.GetFromJsonAsync<List<CategoryDto>>(
+                    "api/categories"
+                );
+
+            categories ??= new List<CategoryDto>();
+        }
+        catch
+        {
+            categories = new List<CategoryDto>();
+
+            errorMessage =
+                "Could not load categories. Make sure the API is running.";
+        }
+    }
+
+    private async Task SaveCategory()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(categoryName))
+        {
+            errorMessage = "Category name is required.";
+            return;
+        }
+
+        if (editingCategoryId == null)
+        {
+            await CreateCategory();
+        }
+        else
+        {
+            await UpdateCategory();
+        }
+    }
+
+    private async Task CreateCategory()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync(
+                "api/categories",
+                new
+                {
+                    name = categoryName
+                }
+            );
+
+            if (response.IsSuccessStatusCode)
+            {
+                ResetForm();
+                await LoadCategories();
+            }
+            else
+            {
+                errorMessage =
+                    $"Could not create category. API returned {(int)response.StatusCode}.";
+            }
+        }
+        catch
+        {
+            errorMessage =
+                "Could not create category. The API is not responding.";
+        }
+    }
+
+    private async Task UpdateCategory()
+    {
+        try
+        {
+            var response = await Http.PutAsJsonAsync(
+                $"api/categories/{editingCategoryId}",
+                new
+                {
+                    name = categoryName
+                }
+            );
+
+            if (response.IsSuccessStatusCode)
+            {
+                ResetForm();
+                await LoadCategories();
+            }
+            else
+            {
+                errorMessage =
+                    $"Could not update category. API returned {(int)response.StatusCode}.";
+            }
+        }
+        catch
+        {
+            errorMessage =
+                "Could not update category. The API is not responding.";
+        }
+    }
+
+    private void EditCategory(CategoryDto category)
+    {
+        errorMessage = null;
+
+        editingCategoryId = category.Id;
+        categoryName = category.Name;
+    }
+
+    private async Task DeleteCategory(int id)
+    {
+        try
+        {
+            errorMessage = null;
+
+            var response = await Http.DeleteAsync(
+                $"api/categories/{id}"
+            );
+
+            if (response.IsSuccessStatusCode)
+            {
+                if (editingCategoryId == id)
+                {
+                    ResetForm();
+                }
+
+                await LoadCategories();
+            }
+            else
+            {
+                errorMessage =
+                    $"Could not delete category. API returned {(int)response.StatusCode}.";
+            }
+        }
+        catch
+        {
+            errorMessage =
+                "Could not delete category. The API is not responding.";
+        }
+    }
+
+    private void CancelEdit()
+    {
+        ResetForm();
+    }
+
+    private void ResetForm()
+    {
+        editingCategoryId = null;
+        categoryName = "";
+        errorMessage = null;
+    }
+
+    public class CategoryDto
+    {
+        public int Id { get; set; }
+
+        public string Name { get; set; } = "";
+    }
+}

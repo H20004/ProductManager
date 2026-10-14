@@ -1,0 +1,342 @@
+@page "/products"
+@inject HttpClient Http
+
+<h3>Products</h3>
+
+<div style="margin-bottom: 20px;">
+    <input @bind="newProduct.Name"
+           placeholder="Product name" />
+
+    <input @bind="newProduct.Price"
+           type="number"
+           step="0.01"
+           placeholder="Price" />
+
+    <input @bind="newProduct.StockQuantity"
+           type="number"
+           placeholder="Stock" />
+
+    <select @bind="newProduct.CategoryId">
+        <option value="0">Select category</option>
+
+        @if (categories != null)
+        {
+            @foreach (var category in categories)
+            {
+                <option value="@category.Id">
+                    @category.Name
+                </option>
+            }
+        }
+    </select>
+
+    <button @onclick="SaveProduct">
+        @(editingProductId == null ? "Add product" : "Save changes")
+    </button>
+
+    @if (editingProductId != null)
+    {
+        <button @onclick="CancelEdit">
+            Cancel
+        </button>
+    }
+</div>
+
+<hr />
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">
+        @errorMessage
+    </div>
+}
+
+@if (products == null)
+{
+    <p>Loading...</p>
+}
+else if (products.Count == 0)
+{
+    <p>No products found.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Price</th>
+                <th>Stock</th>
+                <th>Category</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            @foreach (var product in products)
+            {
+                <tr>
+                    <td>@product.Name</td>
+                    <td>@product.Price.ToString("0.00")</td>
+                    <td>@product.StockQuantity</td>
+                    <td>@product.CategoryName</td>
+
+                    <td>
+                        <button @onclick="() => EditProduct(product)">
+                            Edit
+                        </button>
+
+                        <button @onclick="() => DeleteProduct(product.Id)">
+                            Delete
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<ProductDto>? products;
+    private List<CategoryDto>? categories;
+
+    private CreateProductDto newProduct = new();
+
+    private int? editingProductId;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+        await LoadProducts();
+    }
+
+    private async Task LoadProducts()
+    {
+        try
+        {
+            errorMessage = null;
+
+            products = await Http.GetFromJsonAsync<List<ProductDto>>(
+                "api/products"
+            );
+
+            products ??= new List<ProductDto>();
+        }
+        catch
+        {
+            products = new List<ProductDto>();
+
+            errorMessage =
+                "Could not load products. Make sure the API is running.";
+        }
+    }
+
+    private async Task LoadCategories()
+    {
+        try
+        {
+            errorMessage = null;
+
+            categories = await Http.GetFromJsonAsync<List<CategoryDto>>(
+                "api/categories"
+            );
+
+            categories ??= new List<CategoryDto>();
+        }
+        catch
+        {
+            categories = new List<CategoryDto>();
+
+            errorMessage =
+                "Could not load categories. Make sure the API is running.";
+        }
+    }
+
+    private async Task SaveProduct()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(newProduct.Name))
+        {
+            errorMessage = "Product name is required.";
+            return;
+        }
+
+        if (newProduct.Price < 0)
+        {
+            errorMessage = "Price cannot be negative.";
+            return;
+        }
+
+        if (newProduct.StockQuantity < 0)
+        {
+            errorMessage = "Stock cannot be negative.";
+            return;
+        }
+
+        if (newProduct.CategoryId == 0)
+        {
+            errorMessage = "Please select a category.";
+            return;
+        }
+
+        if (editingProductId == null)
+        {
+            await CreateProduct();
+        }
+        else
+        {
+            await UpdateProduct();
+        }
+    }
+
+    private async Task CreateProduct()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync(
+                "api/products",
+                newProduct
+            );
+
+            if (response.IsSuccessStatusCode)
+            {
+                ResetForm();
+                await LoadProducts();
+            }
+            else
+            {
+                errorMessage =
+                    $"Could not create product. API returned {(int)response.StatusCode}.";
+            }
+        }
+        catch
+        {
+            errorMessage =
+                "Could not create product. The API is not responding.";
+        }
+    }
+
+    private async Task UpdateProduct()
+    {
+        try
+        {
+            var response = await Http.PutAsJsonAsync(
+                $"api/products/{editingProductId}",
+                newProduct
+            );
+
+            if (response.IsSuccessStatusCode)
+            {
+                ResetForm();
+                await LoadProducts();
+            }
+            else
+            {
+                errorMessage =
+                    $"Could not update product. API returned {(int)response.StatusCode}.";
+            }
+        }
+        catch
+        {
+            errorMessage =
+                "Could not update product. The API is not responding.";
+        }
+    }
+
+    private void EditProduct(ProductDto product)
+    {
+        errorMessage = null;
+
+        editingProductId = product.Id;
+
+        newProduct = new CreateProductDto
+        {
+            Name = product.Name,
+            Price = product.Price,
+            StockQuantity = product.StockQuantity,
+            CategoryId = product.CategoryId
+        };
+    }
+
+    private async Task DeleteProduct(int id)
+    {
+        try
+        {
+            errorMessage = null;
+
+            var response = await Http.DeleteAsync(
+                $"api/products/{id}"
+            );
+
+            if (response.IsSuccessStatusCode)
+            {
+                if (editingProductId == id)
+                {
+                    ResetForm();
+                }
+
+                await LoadProducts();
+            }
+            else
+            {
+                errorMessage =
+                    $"Could not delete product. API returned {(int)response.StatusCode}.";
+            }
+        }
+        catch
+        {
+            errorMessage =
+                "Could not delete product. The API is not responding.";
+        }
+    }
+
+    private void CancelEdit()
+    {
+        ResetForm();
+    }
+
+    private void ResetForm()
+    {
+        editingProductId = null;
+
+        newProduct = new CreateProductDto();
+
+        errorMessage = null;
+    }
+
+    public class CreateProductDto
+    {
+        public string Name { get; set; } = "";
+
+        public decimal Price { get; set; }
+
+        public int StockQuantity { get; set; }
+
+        public int CategoryId { get; set; }
+    }
+
+    public class ProductDto
+    {
+        public int Id { get; set; }
+
+        public string Name { get; set; } = "";
+
+        public decimal Price { get; set; }
+
+        public int StockQuantity { get; set; }
+
+        public int CategoryId { get; set; }
+
+        public string CategoryName { get; set; } = "";
+    }
+
+    public class CategoryDto
+    {
+        public int Id { get; set; }
+
+        public string Name { get; set; } = "";
+    }
+}
